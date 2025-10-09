@@ -1,0 +1,2274 @@
+openapi: 3.0.3
+info:
+  title: Hotel Room Booking System API
+  description: |
+    A comprehensive REST API for managing hotel room bookings, including booking management,
+    messaging with hotel staff, room information, and authentication.
+    
+    **User Roles:**
+    - **Admin**: Full access to all endpoints, can manage bookings, rooms, and read messages
+    - **User**: Can create bookings, view rooms, check availability, and send messages
+    - **Guest**: Can view rooms and make bookings without authentication
+    
+    **Features:**
+    - Secure JWT-based authentication
+    - Room availability management
+    - Booking lifecycle management
+    - Payment integration support
+    - Guest communication system
+    - Cancellation policy management
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@hotelbooking.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development server
+  - url: https://api.hotelbooking.com/v1
+    description: Production server
+
+tags:
+  - name: Authentication
+    description: Authentication endpoints for admin users
+  - name: Booking
+    description: Booking management operations
+  - name: Room
+    description: Room information and availability
+  - name: Message
+    description: Messaging between users and hotel staff
+  - name: Payment
+    description: Payment processing and management
+  - name: Guest
+    description: Guest profile management
+  - name: Reports
+    description: Analytics and reporting endpoints (Admin only)
+  - name: System
+    description: System health and monitoring endpoints
+
+security:
+  - bearerAuth: []
+
+paths:
+  # Authentication API
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Admin login
+      description: Authenticate admin user and receive access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  example: admin@hotel.com
+                password:
+                  type: string
+                  format: password
+                  example: Admin@123
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Admin logout
+      description: Invalidate the current access token
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Successfully logged out
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh access token
+      description: Get a new access token using refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refreshToken
+              properties:
+                refreshToken:
+                  type: string
+                  example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+      responses:
+        '200':
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Booking API
+  /bookings:
+    post:
+      tags:
+        - Booking
+      summary: Create a new booking
+      description: Create a new hotel room booking (accessible by both users and admins)
+      security:
+        - bearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingCreateRequest'
+      responses:
+        '201':
+          description: Booking created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Room not available for selected dates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      tags:
+        - Booking
+      summary: Get all bookings
+      description: Retrieve all bookings (admin only) or user's own bookings
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Page number
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 10
+          description: Page size
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, CONFIRMED, CANCELLED, COMPLETED]
+          description: Filter by booking status
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Filter bookings from this date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Filter bookings until this date
+      responses:
+        '200':
+          description: List of bookings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingPageResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /bookings/{id}:
+    get:
+      tags:
+        - Booking
+      summary: Get booking by ID
+      description: Retrieve a specific booking by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Booking ID
+      responses:
+        '200':
+          description: Booking details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '404':
+          description: Booking not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - not authorized to view this booking
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags:
+        - Booking
+      summary: Update booking (Admin only)
+      description: Update an existing booking - only accessible by admin
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Booking ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingUpdateRequest'
+      responses:
+        '200':
+          description: Booking updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Booking not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Booking
+      summary: Delete booking (Admin only)
+      description: Delete a booking - only accessible by admin
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Booking ID
+      responses:
+        '204':
+          description: Booking deleted successfully
+        '403':
+          description: Forbidden - admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Booking not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /bookings/{id}/cancel:
+    post:
+      tags:
+        - Booking
+      summary: Cancel a booking
+      description: Cancel a booking with optional cancellation reason
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Booking ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+                  example: Change of travel plans
+      responses:
+        '200':
+          description: Booking cancelled successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BookingResponse'
+                  - type: object
+                    properties:
+                      cancellationDetails:
+                        $ref: '#/components/schemas/CancellationDetails'
+        '400':
+          description: Booking cannot be cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Booking not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /bookings/{id}/confirm:
+    post:
+      tags:
+        - Booking
+      summary: Confirm a booking (Admin only)
+      description: Confirm a pending booking - admin access required
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Booking ID
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes:
+                  type: string
+                  maxLength: 500
+                  example: Room prepared, welcome package added
+      responses:
+        '200':
+          description: Booking confirmed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '403':
+          description: Forbidden - admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Booking not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Payment API
+  /payments:
+    post:
+      tags:
+        - Payment
+      summary: Create a payment
+      description: Create a payment for a booking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentCreateRequest'
+      responses:
+        '201':
+          description: Payment initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Invalid payment request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Booking not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /payments/{id}:
+    get:
+      tags:
+        - Payment
+      summary: Get payment details
+      description: Retrieve payment information
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Payment ID
+      responses:
+        '200':
+          description: Payment details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '404':
+          description: Payment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /payments/booking/{bookingId}:
+    get:
+      tags:
+        - Payment
+      summary: Get payments for a booking
+      description: Retrieve all payments associated with a booking
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Booking ID
+      responses:
+        '200':
+          description: List of payments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PaymentResponse'
+        '404':
+          description: Booking not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /payments/{id}/refund:
+    post:
+      tags:
+        - Payment
+      summary: Refund a payment (Admin only)
+      description: Process a refund for a payment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Payment ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - amount
+                - reason
+              properties:
+                amount:
+                  type: number
+                  format: double
+                  example: 150.00
+                reason:
+                  type: string
+                  maxLength: 500
+                  example: Booking cancelled within refund period
+      responses:
+        '200':
+          description: Refund processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Invalid refund request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Payment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Guest API
+  /guests:
+    post:
+      tags:
+        - Guest
+      summary: Register a guest
+      description: Create a new guest profile
+      security:
+        - bearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuestCreateRequest'
+      responses:
+        '201':
+          description: Guest registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Guest email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /guests/{id}:
+    get:
+      tags:
+        - Guest
+      summary: Get guest details
+      description: Retrieve guest profile information
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Guest ID
+      responses:
+        '200':
+          description: Guest details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestResponse'
+        '404':
+          description: Guest not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags:
+        - Guest
+      summary: Update guest profile
+      description: Update guest information
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Guest ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuestUpdateRequest'
+      responses:
+        '200':
+          description: Guest updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Guest not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /guests/{id}/bookings:
+    get:
+      tags:
+        - Guest
+      summary: Get guest booking history
+      description: Retrieve all bookings for a guest
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Guest ID
+      responses:
+        '200':
+          description: List of guest bookings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BookingResponse'
+        '404':
+          description: Guest not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Room API
+  /rooms:
+    post:
+      tags:
+        - Room
+      summary: Create a new room (Admin only)
+      description: Create a new room in the system - admin access required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomCreateRequest'
+      responses:
+        '201':
+          description: Room created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Room number already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      tags:
+        - Room
+      summary: Get all rooms
+      description: Retrieve list of all rooms (accessible by both users and admins)
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Page number
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 10
+          description: Page size
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [SINGLE, DOUBLE, SUITE, DELUXE]
+          description: Filter by room type
+        - name: minPrice
+          in: query
+          schema:
+            type: number
+            format: double
+          description: Minimum price per night
+        - name: maxPrice
+          in: query
+          schema:
+            type: number
+            format: double
+          description: Maximum price per night
+      responses:
+        '200':
+          description: List of rooms
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomPageResponse'
+
+  /rooms/{id}:
+    get:
+      tags:
+        - Room
+      summary: Get room details
+      description: Retrieve detailed information about a specific room
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Room ID
+      responses:
+        '200':
+          description: Room details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomResponse'
+        '404':
+          description: Room not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags:
+        - Room
+      summary: Update room (Admin only)
+      description: Update room details - admin access required
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Room ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomUpdateRequest'
+      responses:
+        '200':
+          description: Room updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Room not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Room
+      summary: Delete room (Admin only)
+      description: Delete a room - admin access required
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Room ID
+      responses:
+        '204':
+          description: Room deleted successfully
+        '403':
+          description: Forbidden - admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Room not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Cannot delete room with existing bookings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /rooms/availability:
+    get:
+      tags:
+        - Room
+      summary: Check room availability
+      description: Check which rooms are available for given dates with advanced filtering
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: checkIn
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          description: Check-in date
+          example: "2025-10-15"
+        - name: checkOut
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          description: Check-out date
+          example: "2025-10-20"
+        - name: roomType
+          in: query
+          schema:
+            type: string
+            enum: [SINGLE, DOUBLE, SUITE, DELUXE]
+          description: Filter by room type
+        - name: guests
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+          description: Number of guests
+        - name: minPrice
+          in: query
+          schema:
+            type: number
+            format: double
+          description: Minimum price per night
+        - name: maxPrice
+          in: query
+          schema:
+            type: number
+            format: double
+          description: Maximum price per night
+        - name: amenities
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+          description: Required amenities (comma-separated)
+          example: WiFi,Parking
+        - name: smokingAllowed
+          in: query
+          schema:
+            type: boolean
+          description: Filter by smoking policy
+        - name: petFriendly
+          in: query
+          schema:
+            type: boolean
+          description: Filter by pet-friendly rooms
+      responses:
+        '200':
+          description: List of available rooms
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  availableRooms:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/RoomResponse'
+                        - type: object
+                          properties:
+                            availableForDates:
+                              type: boolean
+                              example: true
+                            totalPrice:
+                              type: number
+                              format: double
+                              example: 750.00
+                              description: Total price for the stay
+                  totalAvailable:
+                    type: integer
+                    example: 5
+                  searchCriteria:
+                    type: object
+                    properties:
+                      checkIn:
+                        type: string
+                        format: date
+                        example: "2025-10-15"
+                      checkOut:
+                        type: string
+                        format: date
+                        example: "2025-10-20"
+                      nights:
+                        type: integer
+                        example: 5
+        '400':
+          description: Invalid date range
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Message API
+  /messages:
+    post:
+      tags:
+        - Message
+      summary: Send a message
+      description: Send a message to hotel staff (from user perspective)
+      security:
+        - bearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageCreateRequest'
+      responses:
+        '201':
+          description: Message sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      tags:
+        - Message
+      summary: Get messages
+      description: Get all messages (admin can see all, users see their own)
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Page number
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Page size
+        - name: unreadOnly
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Filter unread messages only (admin)
+        - name: bookingId
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Filter messages by booking ID
+      responses:
+        '200':
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessagePageResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /messages/{id}:
+    get:
+      tags:
+        - Message
+      summary: Get message by ID
+      description: Retrieve a specific message
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Message ID
+      responses:
+        '200':
+          description: Message details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '404':
+          description: Message not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - not authorized to view this message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /messages/{id}/read:
+    put:
+      tags:
+        - Message
+      summary: Mark message as read (Admin only)
+      description: Mark a message as read - admin access required
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Message ID
+      responses:
+        '200':
+          description: Message marked as read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '403':
+          description: Forbidden - admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Message not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /messages/{id}/reply:
+    post:
+      tags:
+        - Message
+      summary: Reply to a message (Admin only)
+      description: Send a reply to a user's message - admin access required
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Message ID to reply to
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - content
+              properties:
+                content:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+                  example: Thank you for your message. We'll arrange this for you.
+      responses:
+        '201':
+          description: Reply sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Original message not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Analytics & Reports API
+  /reports/bookings/summary:
+    get:
+      tags:
+        - Reports
+      summary: Get booking summary report (Admin only)
+      description: Retrieve summary statistics for bookings
+      parameters:
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Start date for the report
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+          description: End date for the report
+        - name: groupBy
+          in: query
+          schema:
+            type: string
+            enum: [DAY, WEEK, MONTH, YEAR]
+            default: MONTH
+          description: Group results by time period
+      responses:
+        '200':
+          description: Booking summary report
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalBookings:
+                    type: integer
+                    example: 150
+                  totalRevenue:
+                    type: number
+                    format: double
+                    example: 45000.00
+                  averageBookingValue:
+                    type: number
+                    format: double
+                    example: 300.00
+                  occupancyRate:
+                    type: number
+                    format: double
+                    example: 75.5
+                    description: Occupancy rate percentage
+                  bookingsByStatus:
+                    type: object
+                    properties:
+                      confirmed:
+                        type: integer
+                        example: 100
+                      pending:
+                        type: integer
+                        example: 30
+                      cancelled:
+                        type: integer
+                        example: 20
+                  topRoomTypes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        roomType:
+                          type: string
+                          example: DELUXE
+                        count:
+                          type: integer
+                          example: 45
+        '403':
+          description: Forbidden - admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /reports/revenue:
+    get:
+      tags:
+        - Reports
+      summary: Get revenue report (Admin only)
+      description: Retrieve detailed revenue analytics
+      parameters:
+        - name: startDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          description: Start date for the report
+        - name: endDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          description: End date for the report
+      responses:
+        '200':
+          description: Revenue report
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalRevenue:
+                    type: number
+                    format: double
+                    example: 45000.00
+                  totalPaid:
+                    type: number
+                    format: double
+                    example: 40000.00
+                  totalPending:
+                    type: number
+                    format: double
+                    example: 5000.00
+                  totalRefunded:
+                    type: number
+                    format: double
+                    example: 2000.00
+                  revenueByPaymentMethod:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        method:
+                          type: string
+                          example: CREDIT_CARD
+                        amount:
+                          type: number
+                          format: double
+                          example: 30000.00
+        '403':
+          description: Forbidden - admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /health:
+    get:
+      tags:
+        - System
+      summary: Health check endpoint
+      description: Check if the API is running
+      security: []
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: UP
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: "2025-10-07T10:30:00Z"
+                  version:
+                    type: string
+                    example: 1.0.0
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # Authentication Schemas
+    AuthResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        refreshToken:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        tokenType:
+          type: string
+          example: Bearer
+        expiresIn:
+          type: integer
+          format: int64
+          example: 3600
+          description: Token expiration time in seconds
+        user:
+          $ref: '#/components/schemas/UserInfo'
+
+    UserInfo:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        username:
+          type: string
+          example: admin@hotel.com
+        role:
+          type: string
+          enum: [ADMIN, USER]
+          example: ADMIN
+        name:
+          type: string
+          example: John Admin
+
+    # Booking Schemas
+    BookingCreateRequest:
+      type: object
+      required:
+        - roomId
+        - guestName
+        - guestEmail
+        - guestPhone
+        - dates
+        - numberOfGuests
+      properties:
+        roomId:
+          type: integer
+          format: int64
+          example: 101
+        guestId:
+          type: integer
+          format: int64
+          example: 1
+          description: Optional - link booking to existing guest profile
+        guestName:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: John Doe
+        guestEmail:
+          type: string
+          format: email
+          example: john.doe@example.com
+        guestPhone:
+          type: string
+          pattern: '^\+?[1-9]\d{1,14}$'
+          example: "+1234567890"
+        dates:
+          type: object
+          required:
+            - checkIn
+            - checkOut
+          properties:
+            checkIn:
+              type: string
+              format: date
+              example: "2025-10-15"
+            checkOut:
+              type: string
+              format: date
+              example: "2025-10-20"
+        numberOfGuests:
+          type: integer
+          minimum: 1
+          maximum: 10
+          example: 2
+        specialRequests:
+          type: string
+          maxLength: 500
+          example: Late check-in required
+        address:
+          $ref: '#/components/schemas/Address'
+        emergencyContact:
+          type: object
+          properties:
+            name:
+              type: string
+              example: Jane Doe
+            phone:
+              type: string
+              example: "+1234567891"
+            relationship:
+              type: string
+              example: Spouse
+
+    BookingUpdateRequest:
+      type: object
+      properties:
+        checkInDate:
+          type: string
+          format: date
+          example: "2025-10-15"
+        checkOutDate:
+          type: string
+          format: date
+          example: "2025-10-20"
+        numberOfGuests:
+          type: integer
+          minimum: 1
+          maximum: 10
+          example: 2
+        status:
+          type: string
+          enum: [PENDING, CONFIRMED, CHECKED_IN, CHECKED_OUT, CANCELLED, NO_SHOW, COMPLETED]
+          example: CONFIRMED
+        paymentStatus:
+          type: string
+          enum: [PENDING, PARTIAL, PAID, REFUNDED, FAILED]
+          example: PAID
+        specialRequests:
+          type: string
+          maxLength: 500
+          example: Early check-in arranged
+
+    BookingResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        bookingNumber:
+          type: string
+          example: BK-2025-00001
+        room:
+          $ref: '#/components/schemas/RoomResponse'
+        guestName:
+          type: string
+          example: John Doe
+        guestEmail:
+          type: string
+          example: john.doe@example.com
+        guestPhone:
+          type: string
+          example: "+1234567890"
+        checkInDate:
+          type: string
+          format: date
+          example: "2025-10-15"
+        checkOutDate:
+          type: string
+          format: date
+          example: "2025-10-20"
+        numberOfGuests:
+          type: integer
+          example: 2
+        numberOfNights:
+          type: integer
+          example: 5
+        totalPrice:
+          type: number
+          format: double
+          example: 750.00
+        depositAmount:
+          type: number
+          format: double
+          example: 150.00
+          description: Deposit amount paid
+        remainingAmount:
+          type: number
+          format: double
+          example: 600.00
+          description: Remaining amount to be paid
+        status:
+          type: string
+          enum: [PENDING, CONFIRMED, CHECKED_IN, CHECKED_OUT, CANCELLED, NO_SHOW, COMPLETED]
+          example: CONFIRMED
+        paymentStatus:
+          type: string
+          enum: [PENDING, PARTIAL, PAID, REFUNDED, FAILED]
+          example: PARTIAL
+        specialRequests:
+          type: string
+          example: Late check-in required
+        cancellationPolicy:
+          type: string
+          example: Free cancellation until 48 hours before check-in
+        confirmationCode:
+          type: string
+          example: CONF-ABC123XYZ
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-10-07T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2025-10-07T10:30:00Z"
+        confirmedAt:
+          type: string
+          format: date-time
+          example: "2025-10-07T11:00:00Z"
+
+    BookingPageResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookingResponse'
+        page:
+          type: integer
+          example: 0
+        size:
+          type: integer
+          example: 10
+        totalElements:
+          type: integer
+          format: int64
+          example: 100
+        totalPages:
+          type: integer
+          example: 10
+
+    # Room Schemas
+    RoomCreateRequest:
+      type: object
+      required:
+        - roomNumber
+        - type
+        - pricePerNight
+        - capacity
+      properties:
+        roomNumber:
+          type: string
+          example: "101"
+        type:
+          type: string
+          enum: [SINGLE, DOUBLE, SUITE, DELUXE]
+          example: DOUBLE
+        pricePerNight:
+          type: number
+          format: double
+          minimum: 0
+          example: 150.00
+        capacity:
+          type: integer
+          minimum: 1
+          maximum: 10
+          example: 2
+        description:
+          type: string
+          maxLength: 1000
+          example: Spacious double room with city view
+        amenities:
+          type: array
+          items:
+            type: string
+          example: ["WiFi", "TV", "Air Conditioning", "Mini Bar"]
+        imageUrl:
+          type: string
+          format: uri
+          example: https://example.com/images/room-101.jpg
+
+    RoomUpdateRequest:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [SINGLE, DOUBLE, SUITE, DELUXE]
+          example: DOUBLE
+        pricePerNight:
+          type: number
+          format: double
+          minimum: 0
+          example: 150.00
+        capacity:
+          type: integer
+          minimum: 1
+          maximum: 10
+          example: 2
+        description:
+          type: string
+          maxLength: 1000
+          example: Spacious double room with city view
+        amenities:
+          type: array
+          items:
+            type: string
+          example: ["WiFi", "TV", "Air Conditioning", "Mini Bar"]
+        imageUrl:
+          type: string
+          format: uri
+          example: https://example.com/images/room-101.jpg
+        isAvailable:
+          type: boolean
+          example: true
+
+    RoomResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        roomNumber:
+          type: string
+          example: "101"
+        type:
+          type: string
+          enum: [SINGLE, DOUBLE, SUITE, DELUXE]
+          example: DOUBLE
+        pricePerNight:
+          type: number
+          format: double
+          example: 150.00
+        capacity:
+          type: integer
+          example: 2
+        size:
+          type: number
+          format: double
+          example: 35.5
+          description: Room size in square meters
+        bedType:
+          type: string
+          example: King Size
+        description:
+          type: string
+          example: Spacious double room with city view
+        amenities:
+          type: array
+          items:
+            type: string
+          example: ["WiFi", "TV", "Air Conditioning", "Mini Bar", "Safe", "Coffee Maker"]
+        images:
+          type: array
+          items:
+            type: string
+            format: uri
+          example: 
+            - https://example.com/images/room-101-1.jpg
+            - https://example.com/images/room-101-2.jpg
+        imageUrl:
+          type: string
+          example: https://example.com/images/room-101.jpg
+          description: Primary image (deprecated, use images array)
+        floor:
+          type: integer
+          example: 1
+          description: Floor number where room is located
+        view:
+          type: string
+          example: City View
+        smokingAllowed:
+          type: boolean
+          example: false
+        petFriendly:
+          type: boolean
+          example: false
+        isAvailable:
+          type: boolean
+          example: true
+        maintenanceStatus:
+          type: string
+          enum: [AVAILABLE, UNDER_MAINTENANCE, OUT_OF_ORDER]
+          example: AVAILABLE
+        rating:
+          type: number
+          format: double
+          example: 4.5
+          description: Average guest rating
+        reviewCount:
+          type: integer
+          example: 127
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-01-01T00:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2025-10-07T10:30:00Z"
+
+    RoomPageResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoomResponse'
+        page:
+          type: integer
+          example: 0
+        size:
+          type: integer
+          example: 10
+        totalElements:
+          type: integer
+          format: int64
+          example: 50
+        totalPages:
+          type: integer
+          example: 5
+
+    # Message Schemas
+    MessageCreateRequest:
+      type: object
+      required:
+        - subject
+        - content
+      properties:
+        subject:
+          type: string
+          minLength: 3
+          maxLength: 200
+          example: Question about breakfast service
+        content:
+          type: string
+          minLength: 10
+          maxLength: 2000
+          example: Hello, I would like to know what time breakfast is served and if there are vegetarian options available?
+        bookingId:
+          type: integer
+          format: int64
+          example: 1
+          description: Optional - associate message with a booking
+        senderName:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: John Doe
+        senderEmail:
+          type: string
+          format: email
+          example: john.doe@example.com
+
+    MessageResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        subject:
+          type: string
+          example: Question about breakfast service
+        content:
+          type: string
+          example: Hello, I would like to know what time breakfast is served?
+        bookingId:
+          type: integer
+          format: int64
+          example: 1
+        senderName:
+          type: string
+          example: John Doe
+        senderEmail:
+          type: string
+          example: john.doe@example.com
+        isRead:
+          type: boolean
+          example: false
+        replyToId:
+          type: integer
+          format: int64
+          example: null
+          description: ID of the message this is replying to
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-10-07T10:30:00Z"
+        readAt:
+          type: string
+          format: date-time
+          example: null
+
+    MessagePageResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/MessageResponse'
+        page:
+          type: integer
+          example: 0
+        size:
+          type: integer
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+          example: 45
+        totalPages:
+          type: integer
+          example: 3
+
+    # Error Schema
+    ErrorResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-10-07T10:30:00Z"
+        status:
+          type: integer
+          example: 400
+        error:
+          type: string
+          example: Bad Request
+        message:
+          type: string
+          example: Invalid input data
+        path:
+          type: string
+          example: /api/v1/bookings
+        details:
+          type: array
+          items:
+            type: string
+          example: ["checkInDate must be a future date", "guestEmail must be a valid email"]
+
+    # Payment Schemas
+    PaymentCreateRequest:
+      type: object
+      required:
+        - bookingId
+        - amount
+        - paymentMethod
+      properties:
+        bookingId:
+          type: integer
+          format: int64
+          example: 1
+        amount:
+          type: number
+          format: double
+          minimum: 0.01
+          example: 150.00
+        paymentMethod:
+          type: string
+          enum: [CREDIT_CARD, DEBIT_CARD, PAYPAL, BANK_TRANSFER, CASH]
+          example: CREDIT_CARD
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          example: USD
+          default: USD
+        cardDetails:
+          type: object
+          properties:
+            cardNumber:
+              type: string
+              pattern: '^\d{16}$'
+              example: "4532015112830366"
+            cardHolderName:
+              type: string
+              example: John Doe
+            expiryMonth:
+              type: integer
+              minimum: 1
+              maximum: 12
+              example: 12
+            expiryYear:
+              type: integer
+              example: 2027
+            cvv:
+              type: string
+              pattern: '^\d{3,4}$'
+              example: "123"
+        billingAddress:
+          $ref: '#/components/schemas/Address'
+
+    PaymentResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        bookingId:
+          type: integer
+          format: int64
+          example: 1
+        transactionId:
+          type: string
+          example: TXN-2025-00001
+        amount:
+          type: number
+          format: double
+          example: 150.00
+        currency:
+          type: string
+          example: USD
+        paymentMethod:
+          type: string
+          enum: [CREDIT_CARD, DEBIT_CARD, PAYPAL, BANK_TRANSFER, CASH]
+          example: CREDIT_CARD
+        status:
+          type: string
+          enum: [PENDING, PROCESSING, COMPLETED, FAILED, REFUNDED, CANCELLED]
+          example: COMPLETED
+        paymentGatewayResponse:
+          type: string
+          example: Transaction approved
+        refundAmount:
+          type: number
+          format: double
+          example: 0.00
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-10-07T10:30:00Z"
+        completedAt:
+          type: string
+          format: date-time
+          example: "2025-10-07T10:31:00Z"
+
+    # Guest Schemas
+    GuestCreateRequest:
+      type: object
+      required:
+        - firstName
+        - lastName
+        - email
+        - phone
+      properties:
+        firstName:
+          type: string
+          minLength: 2
+          maxLength: 50
+          example: John
+        lastName:
+          type: string
+          minLength: 2
+          maxLength: 50
+          example: Doe
+        email:
+          type: string
+          format: email
+          example: john.doe@example.com
+        phone:
+          type: string
+          pattern: '^\+?[1-9]\d{1,14}$'
+          example: "+1234567890"
+        dateOfBirth:
+          type: string
+          format: date
+          example: "1990-05-15"
+        nationality:
+          type: string
+          example: USA
+        passportNumber:
+          type: string
+          example: P123456789
+        address:
+          $ref: '#/components/schemas/Address'
+        preferences:
+          type: object
+          properties:
+            roomType:
+              type: string
+              enum: [SINGLE, DOUBLE, SUITE, DELUXE]
+              example: DOUBLE
+            smoking:
+              type: boolean
+              example: false
+            floor:
+              type: string
+              enum: [LOW, MIDDLE, HIGH]
+              example: HIGH
+            dietaryRestrictions:
+              type: array
+              items:
+                type: string
+              example: ["Vegetarian", "Gluten-Free"]
+
+    GuestUpdateRequest:
+      type: object
+      properties:
+        firstName:
+          type: string
+          minLength: 2
+          maxLength: 50
+          example: John
+        lastName:
+          type: string
+          minLength: 2
+          maxLength: 50
+          example: Doe
+        email:
+          type: string
+          format: email
+          example: john.doe@example.com
+        phone:
+          type: string
+          pattern: '^\+?[1-9]\d{1,14}$'
+          example: "+1234567890"
+        dateOfBirth:
+          type: string
+          format: date
+          example: "1990-05-15"
+        nationality:
+          type: string
+          example: USA
+        passportNumber:
+          type: string
+          example: P123456789
+        address:
+          $ref: '#/components/schemas/Address'
+        preferences:
+          type: object
+          properties:
+            roomType:
+              type: string
+              enum: [SINGLE, DOUBLE, SUITE, DELUXE]
+              example: DOUBLE
+            smoking:
+              type: boolean
+              example: false
+            floor:
+              type: string
+              enum: [LOW, MIDDLE, HIGH]
+              example: HIGH
+            dietaryRestrictions:
+              type: array
+              items:
+                type: string
+              example: ["Vegetarian", "Gluten-Free"]
+
+    GuestResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        firstName:
+          type: string
+          example: John
+        lastName:
+          type: string
+          example: Doe
+        email:
+          type: string
+          example: john.doe@example.com
+        phone:
+          type: string
+          example: "+1234567890"
+        dateOfBirth:
+          type: string
+          format: date
+          example: "1990-05-15"
+        nationality:
+          type: string
+          example: USA
+        passportNumber:
+          type: string
+          example: P123456789
+        address:
+          $ref: '#/components/schemas/Address'
+        preferences:
+          type: object
+          properties:
+            roomType:
+              type: string
+              example: DOUBLE
+            smoking:
+              type: boolean
+              example: false
+            floor:
+              type: string
+              example: HIGH
+            dietaryRestrictions:
+              type: array
+              items:
+                type: string
+              example: ["Vegetarian", "Gluten-Free"]
+        loyaltyPoints:
+          type: integer
+          example: 250
+        membershipTier:
+          type: string
+          enum: [BRONZE, SILVER, GOLD, PLATINUM]
+          example: SILVER
+        totalBookings:
+          type: integer
+          example: 5
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-01-01T00:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2025-10-07T10:30:00Z"
+
+    # Common Schemas
+    Address:
+      type: object
+      properties:
+        street:
+          type: string
+          example: 123 Main Street
+        city:
+          type: string
+          example: New York
+        state:
+          type: string
+          example: NY
+        postalCode:
+          type: string
+          example: "10001"
+        country:
+          type: string
+          example: USA
+
+    CancellationDetails:
+      type: object
+      properties:
+        cancelledAt:
+          type: string
+          format: date-time
+          example: "2025-10-07T12:00:00Z"
+        cancelledBy:
+          type: string
+          example: admin@hotel.com
+        reason:
+          type: string
+          example: Change of travel plans
+        refundAmount:
+          type: number
+          format: double
+          example: 120.00
+        cancellationFee:
+          type: number
+          format: double
+          example: 30.00
