@@ -13,6 +13,10 @@
 *.tar.gz
 *.rar
 
+# Documentation files (keep local, exclude from repo)
+*.md
+.github/
+
 # Maven
 target/
 pom.xml.tag
