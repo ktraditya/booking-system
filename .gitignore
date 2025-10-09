@@ -14,7 +14,13 @@
 *.rar
 
 # Documentation files (keep local, exclude from repo)
-*.md
+# Allow README.md but exclude other documentation
+API_IMPROVEMENTS.md
+COMPILATION_FIXES.md
+CONGRATULATIONS.md
+IMPLEMENTATION_STATUS.md
+instructions.md
+TEMPLATES.md
 .github/
 
 # Maven
